@@ -282,8 +282,20 @@ export class PostgresWALStreamer extends EventEmitter<any> {
             const payload = typeof row.data === "string" ? JSON.parse(row.data) : row.data;
             if (payload && payload.change) {
               for (const change of payload.change) {
+                let action: PostgresWalEvent["action"];
+                if (change.kind === "insert") {
+                  action = "INSERT";
+                } else if (change.kind === "update") {
+                  action = "UPDATE";
+                } else if (change.kind === "delete") {
+                  action = "DELETE";
+                } else {
+                  this.emit("error", new Error(`Unsupported WAL change kind: ${change.kind}`));
+                  continue;
+                }
+
                 const walEvent: PostgresWalEvent = {
-                  action: change.kind === "insert" ? "INSERT" : change.kind === "update" ? "UPDATE" : "DELETE",
+                  action,
                   schema: change.schema,
                   table: change.table,
                   columns: change.columnnames?.map((name: string, i: number) => ({
