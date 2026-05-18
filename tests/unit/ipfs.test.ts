@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import "fake-indexeddb/auto";
 import { DbClient } from "../../packages/db/src/db-client.js";
-import { MockIpfsProvider } from "../../packages/db/src/ipfs.js";
+import { MockIpfsProvider, DefaultIpfsProvider } from "../../packages/db/src/ipfs.js";
 
 describe("DbClient — IPFS/Filecoin Large Blob Integration", () => {
   let db: DbClient;
@@ -227,5 +227,131 @@ describe("DbClient — IPFS/Filecoin Large Blob Integration", () => {
 
     const fetched = await col.findById(result.id);
     expect(fetched).toBeUndefined();
+  });
+
+  it("should safely handle circular/cyclic references without causing stack overflow", async () => {
+    const col = db.collection<any>("assets");
+
+    // Create an object with cyclic dependency
+    const document: any = {
+      title: "circular-doc",
+      nested: {
+        value: "hello",
+      },
+    };
+    document.nested.parent = document; // Cyclic self-reference!
+
+    const result = await col.insert(document);
+    expect(result.id).toBeDefined();
+
+    // Verify retrieval succeeds cleanly and retains the cycle safely
+    const fetched = await col.findById(result.id);
+    expect(fetched).toBeDefined();
+    expect(fetched?.nested?.value).toBe("hello");
+    expect(fetched?.nested?.parent).toBeDefined();
+  });
+
+  it("should handle offloading and reconstruction in deeply nested document structures", async () => {
+    const col = db.collection<any>("assets");
+
+    // Create deeply nested data structure containing a large binary file at the deep leaves
+    const largeContent = new Uint8Array(120);
+    largeContent.fill(99);
+
+    const document = {
+      level1: {
+        array1: [
+          {
+            level2: {
+              data: largeContent,
+              unrelated: "stay-here",
+            },
+          },
+        ],
+      },
+      flag: true,
+    };
+
+    const result = await col.insert(document);
+    expect(mockProvider.getRawStorage().size).toBe(1);
+
+    const fetched = await col.findById(result.id);
+    expect(fetched).toBeDefined();
+    expect(fetched?.flag).toBe(true);
+    expect(fetched?.level1?.array1[0]?.level2?.unrelated).toBe("stay-here");
+    expect(fetched?.level1?.array1[0]?.level2?.data).toBeInstanceOf(Uint8Array);
+    expect(fetched?.level1?.array1[0]?.level2?.data[0]).toBe(99);
+    expect(fetched?.level1?.array1[0]?.level2?.data.length).toBe(120);
+  });
+
+  it("should not modify or corrupt primitives, empty/null values, or non-binary structures", async () => {
+    const col = db.collection<any>("assets");
+
+    const document = {
+      title: "primitives-doc",
+      emptyArray: [],
+      nullValue: null,
+      undefinedValue: undefined,
+      num: 42,
+      bool: false,
+    };
+
+    const result = await col.insert(document);
+    expect(mockProvider.getRawStorage().size).toBe(0); // Nothing uploaded
+
+    const fetched = await col.findById(result.id);
+    expect(fetched).toBeDefined();
+    expect(fetched?.title).toBe("primitives-doc");
+    expect(fetched?.emptyArray).toEqual([]);
+    expect(fetched?.nullValue).toBeNull();
+    expect(fetched?.num).toBe(42);
+    expect(fetched?.bool).toBe(false);
+  });
+
+  it("should verify DefaultIpfsProvider network failures handle exponential backoff retries and fail on client errors", async () => {
+    const originalFetch = globalThis.fetch;
+    let fetchAttempts = 0;
+
+    const provider = new DefaultIpfsProvider(
+      "http://mock-ipfs-node:5001",
+      "https://ipfs.io/ipfs/",
+      1
+    );
+
+    try {
+      // 1. Test Transient Failures (first 2 fail, 3rd succeeds)
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        fetchAttempts++;
+        if (fetchAttempts < 3) {
+          throw new TypeError("Failed to fetch (Transient network issue)");
+        }
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({ Hash: "bafybeicmockipfsresolvedhash" }),
+          blob: async () => new Blob(["test-data-returned"]),
+        } as Response;
+      }) as any;
+
+      const cid = await provider.upload(new Uint8Array([1, 2, 3]));
+      expect(cid).toBe("bafybeicmockipfsresolvedhash");
+      expect(fetchAttempts).toBe(3); // 2 failed, 3rd succeeded!
+
+      // 2. Test Client Error (e.g. 404 should throw immediately without retrying)
+      fetchAttempts = 0;
+      globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+        fetchAttempts++;
+        return {
+          ok: false,
+          status: 404,
+          statusText: "Not Found",
+        } as Response;
+      }) as any;
+
+      await expect(provider.upload(new Uint8Array([1, 2, 3]))).rejects.toThrow(/HTTP Error 404/);
+      expect(fetchAttempts).toBe(1); // 404 is non-transient, should abort immediately!
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
