@@ -46,7 +46,8 @@
     "tsx": "^4.21.0",
     "turbo": "^2.3.0",
     "typescript": "^5.5.4",
-    "vitest": "^4.1.6"
+    "vitest": "^4.1.6",
+    "yjs": "^13.6.30"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": [
