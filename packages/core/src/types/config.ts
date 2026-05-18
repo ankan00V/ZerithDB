@@ -78,8 +78,48 @@ export interface NetworkConfig {
   /** Optional human-readable peer alias */
   name?: string;
 
+
   /** Optional ENS identity */
   ens?: string;
+}
+
+export interface IpfsProvider {
+  upload(data: Blob | Uint8Array): Promise<string>;
+  fetch(cid: string): Promise<Blob>;
+}
+
+export interface IpfsConfig {
+  /**
+   * Enable or disable IPFS/Filecoin integration.
+   * @default false
+   */
+  enabled?: boolean;
+
+  /**
+   * The base URL of the IPFS HTTP API endpoint for uploading files.
+   * Typically 'http://localhost:5001' or a remote pinning/gateway API.
+   * @default "http://localhost:5001"
+   */
+  apiUrl?: string;
+
+  /**
+   * The base URL of the IPFS gateway for fetching files.
+   * Typically 'https://ipfs.io/ipfs/' or a local gateway.
+   * @default "https://ipfs.io/ipfs/"
+   */
+  gatewayUrl?: string;
+
+  /**
+   * Threshold in bytes above which a Blob or Uint8Array is offloaded to IPFS.
+   * If not set or 0, any Blob/Uint8Array will be uploaded.
+   * @default 0
+   */
+  sizeThreshold?: number;
+
+  /**
+   * Optional custom upload/fetch implementation, useful for tests or custom pinning services.
+   */
+  provider?: IpfsProvider;
 }
 
 export interface ZerithDBConfig {
@@ -94,6 +134,7 @@ export interface ZerithDBConfig {
   auth?: AuthConfig;
   network?: NetworkConfig;
   debug?: DebugConfig;
+  ipfs?: IpfsConfig;
 
   /**
    * Log level for internal ZerithDB diagnostics.
@@ -101,3 +142,4 @@ export interface ZerithDBConfig {
    */
   logLevel?: "debug" | "info" | "warn" | "error" | "silent";
 }
+

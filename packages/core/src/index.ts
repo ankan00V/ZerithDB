@@ -11,6 +11,8 @@ export type {
   AuthConfig,
   NetworkConfig,
   DebugConfig,
+  IpfsConfig,
+  IpfsProvider,
 } from "./types/config.js";
 export type {
   Document,
