@@ -9,6 +9,7 @@
     "build": "esbuild src/server.ts --bundle --platform=node --format=cjs --outfile=dist/server.cjs --minify",
     "start": "node dist/server.cjs",
     "dev": "tsx --watch src/server.ts",
+    "test": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -29,6 +30,7 @@
     "esbuild": "^0.21.5",
     "tsup": "^8.2.4",
     "tsx": "^4.17.0",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "vitest": "^4.1.6"
   }
 }

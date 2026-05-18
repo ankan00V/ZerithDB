@@ -13,6 +13,7 @@ import { wrapIDBOperation } from "./internal/wrap-idb-operation.js";
 import type { BackupExportOptions, BackupSnapshot } from "./backup.js";
 import { GraphClient } from "./graph-client.js";
 import type { GraphNode, GraphEdge } from "zerithdb-core";
+import { generateKeyBetween, rebalanceKeys } from "zerithdb-utils";
 /**
  * A handle to a single named collection within the ZerithDB local database.
  * All operations are async and backed by IndexedDB.
@@ -20,21 +21,80 @@ import type { GraphNode, GraphEdge } from "zerithdb-core";
 export class CollectionClient<T extends Record<string, any> = Record<string, any>> {
   constructor(
     private readonly table: Table<Document<T>>,
-    private readonly collectionName: string
+    private readonly collectionName: string,
+    private readonly auth?: any
   ) {}
 
+  private async checkBiometric(operationDescription: string): Promise<void> {
+    if (this.auth?.biometric?.isBiometricRequiredForDB()) {
+      const authorized = await this.auth.biometric.promptBiometric(
+        `Authorize sensitive database operation: ${operationDescription} in collection "${this.collectionName}"`
+      );
+      if (!authorized) {
+        throw new ZerithDBError(
+          ErrorCode.AUTH_SIGN_FAILED,
+          "Database operation cancelled or biometric authentication failed."
+        );
+      }
+    }
+  }
+
   /**
-   * Subscribe to changes in the collection.
-   * Uses Dexie's liveQuery to reactively notify when documents change.
+   * Subscribe to live changes in the collection.
+   * Uses Dexie's liveQuery to reactively re-invoke the callback whenever
+   * matching documents are inserted, updated, or deleted in IndexedDB.
    *
-   * @param callback - Function called with the updated list of all documents
-   * @returns An unsubscribe function
+   * Fix (BUG-02): Previously the filter was hardcoded to `{}` (match all),
+   * meaning every subscriber always received the entire collection regardless
+   * of what they wanted to observe. The filter is now passed through to
+   * `find()` so only matching documents are streamed to the callback.
+   *
+   * **Important:** The filter is evaluated *inside* the liveQuery closure so
+   * Dexie can correctly track which IndexedDB reads to watch for reactivity.
+   * Moving it outside the closure would break live updates.
+   *
+   * @param callback - Called with the current matching documents on every change
+   * @param filter   - Optional MongoDB-style filter (same as `find(filter)`).
+   *                   Defaults to `{}` which matches all documents.
+   *                   Existing callers that omit the filter are unaffected.
+   * @returns An unsubscribe function — call it to stop the subscription
+   *
+   * @example
+   * ```typescript
+   * // Subscribe to ALL documents (existing behaviour — unchanged)
+   * const unsub = todos.subscribe((docs) => console.log(docs));
+   *
+   * // Subscribe to only undone tasks (new capability)
+   * const unsub = todos.subscribe(
+   *   (docs) => console.log("Undone:", docs),
+   *   { done: false }
+   * );
+   *
+   * // Subscribe with operators
+   * const unsub = todos.subscribe(
+   *   (docs) => console.log("High priority:", docs),
+   *   { priority: { $gte: 3 } }
+   * );
+   *
+   * unsub(); // stop listening
+   * ```
    */
-  subscribe(callback: (documents: Document<T>[]) => void): () => void {
-    const observable = liveQuery(() => this.find());
+  subscribe(
+    callback: (documents: Document<T>[]) => void,
+    filter: QueryFilter<T> = {}
+  ): () => void {
+    // The filter reference is captured inside the liveQuery closure.
+    // This is required — Dexie tracks all IDB reads that happen INSIDE the
+    // closure to build its reactive dependency graph. If find() were called
+    // outside, Dexie would not know which table changes to watch.
+    const observable = liveQuery(() => this.find(filter));
     const subscription = observable.subscribe({
       next: (docs) => callback(docs),
-      error: (err) => console.error(`Error in collection subscription:`, err),
+      error: (err) =>
+        console.error(
+          `[ZerithDB] Error in subscription to collection "${this.collectionName}":`,
+          err
+        ),
     });
     return () => subscription.unsubscribe();
   }
@@ -47,6 +107,7 @@ export class CollectionClient<T extends Record<string, any> = Record<string, any
     if (document === null || document === undefined) {
       throw new ZerithDBError(ErrorCode.DB_WRITE_FAILED, "Document cannot be null or undefined");
     }
+    await this.checkBiometric("Insert Document");
     const now = Date.now();
     const id = uuidv7();
     const doc: Document<T> = {
@@ -73,6 +134,7 @@ export class CollectionClient<T extends Record<string, any> = Record<string, any
     if (!Array.isArray(documents) || documents.length === 0) {
       throw new ZerithDBError(ErrorCode.DB_WRITE_FAILED, "Documents must be a non-empty array");
     }
+    await this.checkBiometric("Bulk Insert Documents");
     for (const doc of documents) {
       if (doc === null || doc === undefined) {
         throw new ZerithDBError(
@@ -109,31 +171,45 @@ export class CollectionClient<T extends Record<string, any> = Record<string, any
    * const high = await todos.find({ priority: { $gte: 3 } });
    * ```
    */
-  async find(filter: QueryFilter<T> = {}, options: QueryOptions = {}): Promise<Document<T>[]> {
+  async find(filter: QueryFilter<T> = {}, options: QueryOptions<T> = {}): Promise<Document<T>[]> {
     return wrapIDBOperation(
       ErrorCode.DB_READ_FAILED,
       `Failed to query collection "${this.collectionName}"`,
       async () => {
         const compiledFilter = this.precompileRegexes(filter);
         const results: Document<T>[] = [];
-        let skipped = 0;
-        const offset = options.offset ?? 0;
+
+        await this.table.each((doc) => {
+          if (this.matchesFilter(doc, compiledFilter)) {
+            results.push(doc);
+          }
+        });
+
+        if (options.sort) {
+          const { field, order = "asc" } = options.sort;
+
+          results.sort((a, b) => {
+            const aValue = a[field];
+            const bValue = b[field];
+
+            if (aValue === bValue) return 0;
+
+            if (aValue == null) return 1;
+            if (bValue == null) return -1;
+
+            const comparison = String(aValue).localeCompare(String(bValue), undefined, {
+              numeric: true,
+              sensitivity: "base",
+            });
+
+            return order === "desc" ? -comparison : comparison;
+          });
+        }
+
+        const skip = options.skip ?? options.offset ?? 0;
         const limit = options.limit ?? Number.POSITIVE_INFINITY;
 
-        await this.table
-          .toCollection()
-          .until(() => results.length >= limit)
-          .each((doc) => {
-            if (this.matchesFilter(doc, compiledFilter)) {
-              if (skipped < offset) {
-                skipped++;
-              } else {
-                results.push(doc);
-              }
-            }
-          });
-
-        return results;
+        return results.slice(skip, skip + limit);
       }
     );
   }
@@ -165,6 +241,7 @@ export class CollectionClient<T extends Record<string, any> = Record<string, any
         "Update spec cannot be empty. Must provide non-empty $set or $unset."
       );
     }
+    await this.checkBiometric("Update Documents");
     return wrapIDBOperation(
       ErrorCode.DB_WRITE_FAILED,
       `Failed to update documents in "${this.collectionName}"`,
@@ -182,6 +259,7 @@ export class CollectionClient<T extends Record<string, any> = Record<string, any
    * Returns the number of deleted documents.
    */
   async delete(filter: QueryFilter<T>): Promise<number> {
+    await this.checkBiometric("Delete Documents");
     return wrapIDBOperation(
       ErrorCode.DB_DELETE_FAILED,
       `Failed to delete documents from "${this.collectionName}"`,
@@ -197,6 +275,7 @@ export class CollectionClient<T extends Record<string, any> = Record<string, any
    * Delete every document in the collection.
    */
   async clearAll(): Promise<void> {
+    await this.checkBiometric("Clear Collection");
     return wrapIDBOperation(
       ErrorCode.DB_DELETE_FAILED,
       `Failed to clear collection "${this.collectionName}"`,
@@ -227,6 +306,152 @@ export class CollectionClient<T extends Record<string, any> = Record<string, any
         });
 
         return total;
+      }
+    );
+  }
+
+  /**
+   * Move a document with `docId` strictly between `beforeId` and `afterId` using fractional indexing.
+   * Automatically handles start, middle, and end insertion. Updates the document in the local IndexedDB.
+   * If the newly generated string index exceeds 50 characters, triggers a background re-balance.
+   *
+   * @param docId - The ID of the document to move
+   * @param beforeId - The ID of the document before the target position (null if moving to start)
+   * @param afterId - The ID of the document after the target position (null if moving to end)
+   * @param orderKey - The document key where fractional index is stored (defaults to "_order")
+   * @returns The generated fractional index string key
+   */
+  async moveBetween(
+    docId: string,
+    beforeId: string | null,
+    afterId: string | null,
+    orderKey = "_order"
+  ): Promise<string> {
+    if (docId === beforeId || docId === afterId) {
+      throw new ZerithDBError(
+        ErrorCode.ASSERTION_FAILED,
+        "Cannot move a document relative to itself"
+      );
+    }
+
+    return wrapIDBOperation(
+      ErrorCode.DB_WRITE_FAILED,
+      `Failed to move document "${docId}" in collection "${this.collectionName}"`,
+      async () => {
+        // Fetch target document
+        const doc = await this.findById(docId);
+        if (!doc) {
+          throw new ZerithDBError(
+            ErrorCode.DB_WRITE_FAILED,
+            `Target document "${docId}" not found in collection "${this.collectionName}"`
+          );
+        }
+
+        // Fetch boundary documents
+        const beforeDoc = beforeId ? await this.findById(beforeId) : null;
+        if (beforeId && !beforeDoc) {
+          throw new ZerithDBError(
+            ErrorCode.DB_WRITE_FAILED,
+            `Boundary document (before) "${beforeId}" not found in collection "${this.collectionName}"`
+          );
+        }
+
+        const afterDoc = afterId ? await this.findById(afterId) : null;
+        if (afterId && !afterDoc) {
+          throw new ZerithDBError(
+            ErrorCode.DB_WRITE_FAILED,
+            `Boundary document (after) "${afterId}" not found in collection "${this.collectionName}"`
+          );
+        }
+
+        // Self-healing: if any document lacks an order key, initialize all order keys in the collection
+        const hasMissingOrder =
+          !(orderKey in doc) ||
+          (beforeDoc && !(orderKey in beforeDoc)) ||
+          (afterDoc && !(orderKey in afterDoc));
+
+        let currentBeforeDoc = beforeDoc;
+        let currentAfterDoc = afterDoc;
+
+        if (hasMissingOrder) {
+          await this.rebalance(orderKey);
+
+          // Re-fetch all documents to get their newly assigned order keys
+          const reFetchedDoc = await this.findById(docId);
+          if (reFetchedDoc) {
+            Object.assign(doc, reFetchedDoc);
+          }
+          if (beforeId) {
+            currentBeforeDoc = (await this.findById(beforeId)) ?? null;
+          }
+          if (afterId) {
+            currentAfterDoc = (await this.findById(afterId)) ?? null;
+          }
+        }
+
+        // Extract current fractional keys
+        const beforeOrder = currentBeforeDoc ? (currentBeforeDoc[orderKey] as string) : null;
+        const afterOrder = currentAfterDoc ? (currentAfterDoc[orderKey] as string) : null;
+
+        // Generate deterministic lexical midpoint
+        const newOrder = generateKeyBetween(beforeOrder, afterOrder);
+
+        // Save updated document to database
+        const now = Date.now();
+        await this.table.update(docId, {
+          [orderKey]: newOrder,
+          _updatedAt: now,
+        } as any);
+
+        // Trigger asynchronous background re-balance if string length grows too long
+        if (newOrder.length > 50) {
+          this.rebalance(orderKey).catch((err) => {
+            console.error(`Background rebalance failed for collection "${this.collectionName}":`, err);
+          });
+        }
+
+        return newOrder;
+      }
+    );
+  }
+
+  /**
+   * Rebalances the fractional indexes in the collection to prevent long key strings.
+   * Sorts all documents by their current fractional index key and re-allocates evenly spaced keys.
+   *
+   * @param orderKey - The key where fractional index is stored (defaults to "_order")
+   */
+  async rebalance(orderKey = "_order"): Promise<void> {
+    return wrapIDBOperation(
+      ErrorCode.DB_WRITE_FAILED,
+      `Failed to rebalance order keys in collection "${this.collectionName}"`,
+      async () => {
+        const allDocs = await this.table.toArray();
+
+        // Sort documents by current orderKey, falling back to creation time and ID to guarantee deterministic output
+        allDocs.sort((a, b) => {
+          const valA = (a[orderKey] as string) ?? "";
+          const valB = (b[orderKey] as string) ?? "";
+          if (valA < valB) return -1;
+          if (valA > valB) return 1;
+
+          const timeA = a._createdAt ?? 0;
+          const timeB = b._createdAt ?? 0;
+          if (timeA !== timeB) return timeA - timeB;
+
+          return a._id.localeCompare(b._id);
+        });
+
+        const balancedKeys = rebalanceKeys(allDocs.length);
+        const now = Date.now();
+
+        const updates = allDocs.map((doc, idx) => ({
+          ...doc,
+          [orderKey]: balancedKeys[idx],
+          _updatedAt: now,
+        }));
+
+        await this.table.bulkPut(updates);
       }
     );
   }
@@ -294,10 +519,11 @@ export class CollectionClient<T extends Record<string, any> = Record<string, any
           return false;
         }
 
-        const regex =
-          conditions.$regex instanceof RegExp
-            ? conditions.$regex
-            : new RegExp(conditions.$regex);
+        const regex = conditions.$regex;
+
+        if (!(regex instanceof RegExp)) {
+          return false;
+        }
 
         regex.lastIndex = 0;
 
@@ -316,8 +542,7 @@ export class CollectionClient<T extends Record<string, any> = Record<string, any
         const conditions = { ...condition } as Record<string, any>;
         const isOperatorObject = Object.keys(conditions).some((k) => k.startsWith("$"));
         if (isOperatorObject && "$regex" in conditions) {
-          const regex = conditions["$regex"];
-          conditions["$regex"] = regex instanceof RegExp ? regex : new RegExp(regex);
+          conditions["$regex"] = this.compileRegexCondition(conditions);
         }
         compiled[key] = conditions;
       } else {
@@ -325,6 +550,35 @@ export class CollectionClient<T extends Record<string, any> = Record<string, any
       }
     }
     return compiled as QueryFilter<T>;
+  }
+
+  private compileRegexCondition(conditions: Record<string, any>): RegExp | null {
+    const rawRegex = conditions.$regex;
+    const rawFlags =
+      typeof conditions.$flags === "string"
+        ? conditions.$flags
+        : typeof conditions.$options === "string"
+          ? conditions.$options
+          : undefined;
+
+    try {
+      if (rawRegex instanceof RegExp) {
+        if (!rawFlags) {
+          return rawRegex;
+        }
+
+        const mergedFlags = Array.from(new Set((rawRegex.flags + rawFlags).split(""))).join("");
+        return new RegExp(rawRegex.source, mergedFlags);
+      }
+
+      if (typeof rawRegex === "string") {
+        return new RegExp(rawRegex, rawFlags);
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
   }
 }
 
@@ -340,8 +594,6 @@ class ZerithDBDexie extends Dexie {
   constructor(appId: string) {
     super(`zerithdb_${appId}`);
   }
-
-
 
   /**
    * Ensure a named collection exists, creating it via a Dexie version
@@ -370,30 +622,30 @@ class ZerithDBDexie extends Dexie {
   }
 
   ensureGraphTables(graphName: string): { nodesTable: Table; edgesTable: Table } {
-  const nodesKey = `__graph_nodes_${graphName}`;
-  const edgesKey = `__graph_edges_${graphName}`;
+    const nodesKey = `__graph_nodes_${graphName}`;
+    const edgesKey = `__graph_edges_${graphName}`;
 
-  if (!this.tableMap.has(nodesKey) || !this.tableMap.has(edgesKey)) {
-    this._currentSchema[nodesKey] = "_id, _createdAt, _updatedAt";
-    this._currentSchema[edgesKey] = "_id, from, to, label, _createdAt";
+    if (!this.tableMap.has(nodesKey) || !this.tableMap.has(edgesKey)) {
+      this._currentSchema[nodesKey] = "_id, _createdAt, _updatedAt";
+      this._currentSchema[edgesKey] = "_id, from, to, label, _createdAt";
 
-    const nextVersion = Math.max(this.verno, this._pendingVersion) + 1;
-    this._pendingVersion = nextVersion;
+      const nextVersion = Math.max(this.verno, this._pendingVersion) + 1;
+      this._pendingVersion = nextVersion;
 
-    if (this.isOpen()) {
-      this.close();
+      if (this.isOpen()) {
+        this.close();
+      }
+
+      this.version(nextVersion).stores(this._currentSchema);
+      this.tableMap.set(nodesKey, this.table(nodesKey));
+      this.tableMap.set(edgesKey, this.table(edgesKey));
     }
 
-    this.version(nextVersion).stores(this._currentSchema);
-    this.tableMap.set(nodesKey, this.table(nodesKey));
-    this.tableMap.set(edgesKey, this.table(edgesKey));
+    return {
+      nodesTable: this.tableMap.get(nodesKey)!,
+      edgesTable: this.tableMap.get(edgesKey)!,
+    };
   }
-
-  return {
-    nodesTable: this.tableMap.get(nodesKey)!,
-    edgesTable: this.tableMap.get(edgesKey)!,
-  };
-}
 }
 
 /**
@@ -408,7 +660,10 @@ export class DbClient {
 
   private readonly graphs = new Map<string, GraphClient<any>>();
 
-  constructor(config: ZerithDBConfig) {
+  constructor(
+    config: ZerithDBConfig,
+    private readonly auth?: any
+  ) {
     this.appId = config.appId;
     this.dexie = new ZerithDBDexie(config.appId);
   }
@@ -422,25 +677,24 @@ export class DbClient {
     }
     if (!this.collections.has(name)) {
       const table = this.dexie.ensureCollection(name);
-      this.collections.set(name, new CollectionClient<T>(table as Table<Document<T>>, name));
+      this.collections.set(
+        name,
+        new CollectionClient<T>(table as Table<Document<T>>, name, this.auth)
+      );
     }
     return this.collections.get(name) as CollectionClient<T>;
   }
 
   graph<T extends Record<string, any> = Record<string, any>>(name: string): GraphClient<T> {
-  if (!this.graphs.has(name)) {
-    const { nodesTable, edgesTable } = this.dexie.ensureGraphTables(name);
-    this.graphs.set(
-      name,
-      new GraphClient<T>(
-        nodesTable as Table<GraphNode<T>>,
-        edgesTable as Table<GraphEdge>,
-        name
-      )
-    );
+    if (!this.graphs.has(name)) {
+      const { nodesTable, edgesTable } = this.dexie.ensureGraphTables(name);
+      this.graphs.set(
+        name,
+        new GraphClient<T>(nodesTable as Table<GraphNode<T>>, edgesTable as Table<GraphEdge>, name)
+      );
+    }
+    return this.graphs.get(name) as GraphClient<T>;
   }
-  return this.graphs.get(name) as GraphClient<T>;
-}
 
   async getMemoryStats(): Promise<{ recordCount: number; collections: Record<string, number> }> {
     const collections: Record<string, number> = {};
@@ -474,6 +728,18 @@ export class DbClient {
    * If options.collections is omitted, it exports ALL collections found in IndexedDB.
    */
   async exportSnapshot(options: BackupExportOptions = {}): Promise<BackupSnapshot> {
+    if (this.auth?.biometric?.isBiometricRequiredForDB()) {
+      const authorized = await this.auth.biometric.promptBiometric(
+        "Authorize sensitive operation: Export full database backup snapshot"
+      );
+      if (!authorized) {
+        throw new ZerithDBError(
+          ErrorCode.AUTH_SIGN_FAILED,
+          "Database export cancelled or biometric authentication failed."
+        );
+      }
+    }
+
     return wrapIDBOperation(
       ErrorCode.DB_READ_FAILED,
       "Failed to export local backup snapshot",

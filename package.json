@@ -15,7 +15,7 @@
   },
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev --concurrency=20",
+    "dev": "turbo run dev --concurrency=25",
     "test": "turbo run test",
     "test:e2e": "turbo run test:e2e",
     "lint": "turbo run lint",
@@ -25,7 +25,7 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "turbo run build --filter=!./apps/* && changeset publish",
-    "prepare": "husky && sh scripts/setup-git-config.sh",
+    "prepare": "husky",
     "build:audit": "pnpm --filter zerithdb-audit build",
     "benchmark": "tsx scripts/benchmark.ts",
     "query-benchmark": "tsx scripts/query-benchmark.ts"

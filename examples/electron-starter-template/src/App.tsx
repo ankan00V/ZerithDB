@@ -21,24 +21,15 @@ export function App() {
       <aside className="sidebar">
         <SyncStatus />
 
-        <button
-          className="btn-new"
-          onClick={() => setSelectedNote(null)}
-        >
+        <button className="btn-new" onClick={() => setSelectedNote(null)}>
           ＋ New Note
         </button>
 
-        <NoteList
-          onSelect={setSelectedNote}
-          selectedId={selectedNote?.id ?? null}
-        />
+        <NoteList onSelect={setSelectedNote} selectedId={selectedNote?.id ?? null} />
       </aside>
 
       <main className="editor-pane">
-        <NoteEditor
-          note={selectedNote}
-          onSaved={handleSaved}
-        />
+        <NoteEditor note={selectedNote} onSaved={handleSaved} />
       </main>
     </div>
   );

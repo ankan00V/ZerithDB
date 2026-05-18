@@ -140,3 +140,8 @@ export async function withTimeout<T>(
 export function randomId(): string {
   return crypto.randomUUID();
 }
+
+// ─── Fractional Indexing helpers ──────────────────────────────────────────────
+
+export { generateKeyBetween, rebalanceKeys } from "./fractional-indexing.js";
+

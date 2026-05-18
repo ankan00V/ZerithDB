@@ -126,7 +126,7 @@ export function createApp(config: ZerithDBConfig): ZerithDBApp {
   logger.info("Initializing ZerithDB app", { appId: resolvedConfig.appId });
 
   const auth = new AuthManager(resolvedConfig);
-  const db = new DbClient(resolvedConfig);
+  const db = new DbClient(resolvedConfig, auth);
   const network = new NetworkManager(resolvedConfig, auth);
   const sync = new SyncEngine(resolvedConfig, db, network);
 

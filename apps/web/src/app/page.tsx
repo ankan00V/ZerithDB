@@ -83,10 +83,10 @@ export default function LandingPage() {
   };
 
   return (
-    <main className="flex flex-col min-h-screen bg-background text-foreground transition-colors duration-300 selection:bg-blue-100 selection:text-blue-900 overflow-x-hidden">
+    <main className="flex flex-col min-h-screen bg-background text-foreground transition-colors duration-300 selection:bg-blue-100 selection:text-blue-900 ">
       {/* ── HEADER ── */}
-      <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
-        <div className="container mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+      <header className="sticky top-0 z-50 bg-background/80 supports-[backdrop-filter]:bg-background/60 border-b border-border backdrop-blur-md">
+        <div className="container mx-auto flex items-center justify-between px-4 md:px-8 py-3 gap-3">
           <div className="flex items-center gap-2">
             <motion.div
               initial={{ rotate: -10, scale: 0.9 }}
@@ -121,6 +121,12 @@ export default function LandingPage() {
               className="text-blue-600 font-semibold hover:text-blue-700 transition-colors flex items-center gap-1.5"
             >
               <Zap className="w-4 h-4" /> Playground
+            </Link>
+            <Link
+              href="/dev"
+              className="text-slate-900 font-semibold hover:text-black transition-colors flex items-center gap-1.5"
+            >
+              <Terminal className="w-4 h-4" /> Dev
             </Link>
           </nav>
           <div className="flex items-center gap-2 sm:gap-4">
@@ -339,6 +345,13 @@ export default function LandingPage() {
           >
             <Zap className="w-4 h-4 animate-pulse" />
             Try Playground
+          </Link>
+          <Link
+            href="/dev"
+            className="flex items-center gap-2 bg-slate-900 text-white px-6 py-3.5 rounded-xl font-medium text-base hover:bg-slate-800 transition-all w-full sm:w-auto justify-center shadow-sm"
+          >
+            <Terminal className="w-4 h-4" />
+            Dev Dashboard
           </Link>
           <a
             href="https://github.com/Zerith-Labs/ZerithDB"

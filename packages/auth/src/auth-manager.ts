@@ -4,6 +4,7 @@ import type { ZerithDBConfig, Identity, Signature } from "zerithdb-core";
 import { ZerithDBError, ErrorCode, EventEmitter } from "zerithdb-core";
 import { timingSafeEqual } from "./timing-safe.js";
 import { splitSecret, recoverSecret } from "zerithdb-wasm-crypto";
+import { BiometricKeyManager } from "./biometric-key.js";
 
 interface KeyValueStorage {
   getItem(key: string): string | null;
@@ -52,6 +53,7 @@ export class AuthManager extends EventEmitter<AuthEvents> {
   private readonly storage: KeyValueStorage;
   private _identity: Identity | null = null;
   private privateKeyBytes: Uint8Array | null = null;
+  public readonly biometric = new BiometricKeyManager();
 
   constructor(config: ZerithDBConfig) {
     super();

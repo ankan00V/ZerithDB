@@ -28,19 +28,25 @@ async function runBenchmark() {
   const startFull = performance.now();
   const allDocs = await col.find({});
   const endFull = performance.now();
-  console.log(`Full Scan (find all): ${allDocs.length} docs, ${(endFull - startFull).toFixed(2)}ms`);
+  console.log(
+    `Full Scan (find all): ${allDocs.length} docs, ${(endFull - startFull).toFixed(2)}ms`
+  );
 
   // 2. Paginated Scan (limit 10) - Now faster with .until() termination
   const startPaged = performance.now();
   const pagedDocs = await col.find({}, { limit: 10 });
   const endPaged = performance.now();
-  console.log(`Paginated (limit 10): ${pagedDocs.length} docs, ${(endPaged - startPaged).toFixed(2)}ms`);
+  console.log(
+    `Paginated (limit 10): ${pagedDocs.length} docs, ${(endPaged - startPaged).toFixed(2)}ms`
+  );
 
   // 3. Skip/Offset Test
   const startOffset = performance.now();
   const offsetDocs = await col.find({}, { offset: 1000, limit: 10 });
   const endOffset = performance.now();
-  console.log(`Offset 1000 + Limit 10: ${offsetDocs.length} docs, ${(endOffset - startOffset).toFixed(2)}ms`);
+  console.log(
+    `Offset 1000 + Limit 10: ${offsetDocs.length} docs, ${(endOffset - startOffset).toFixed(2)}ms`
+  );
 
   await db.dispose();
 }

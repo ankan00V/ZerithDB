@@ -29,12 +29,14 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
   readonly outbox: OutboxQueue<Uint8Array>;
   readonly inbox: InboxQueue<Uint8Array>;
   private _enabled = false;
+  
   private _state: SyncState = { synced: false, pendingUpdates: 0, connectedPeers: 0 };
   private plugins = new Map<string, SyncPlugin>();
   private activePluginVersion = 1;
   private pendingUpdates = new Map<string, Uint8Array[]>();
   private syncTimer: any = null;
   private syncTimerIsRaf: boolean = false;
+  private antiEntropyTimer: any = null;
 
   constructor(
     private readonly config: ZerithDBConfig,
@@ -95,6 +97,11 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
     this.ephemeral.enable();
     this.updateState({ synced: true, connectedPeers: this.network.connectedPeerCount });
     void this.flushOutbox();
+
+    // Start background anti-entropy sync (every 100ms) to guarantee strong eventual consistency
+    this.antiEntropyTimer = setInterval(() => {
+      this.triggerAntiEntropy();
+    }, 100);
   }
 
   /** Disable sync without disconnecting from peers */
@@ -105,6 +112,22 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
     this.network.off("peer:disconnected", this.onPeerDisconnected);
     this.ephemeral.disable();
     this.updateState({ synced: false, connectedPeers: 0 });
+
+    if (this.antiEntropyTimer) {
+      clearInterval(this.antiEntropyTimer);
+      this.antiEntropyTimer = null;
+    }
+  }
+
+  private triggerAntiEntropy(): void {
+    if (!this._enabled || this.network.connectedPeerCount === 0) return;
+    for (const [collectionName, doc] of this.docs.entries()) {
+      const stateVector = Y.encodeStateVector(doc);
+      this.network.broadcast({
+        type: "sync-request",
+        payload: this.encodeMessage(collectionName, stateVector),
+      });
+    }
   }
 
   /**
@@ -163,15 +186,25 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
       doc
     );
     this.persistences.set(collectionName, persistence);
+// Broadcast local updates to peers (batched via requestAnimationFrame)
+doc.on("update", (update: Uint8Array, origin: unknown) => {
+  if (origin === "remote") return; // Don't echo back remote updates
 
-    // Broadcast local updates to peers (batched via requestAnimationFrame)
-    doc.on("update", (update: Uint8Array, origin: unknown) => {
-      if (origin === "remote") return; // Don't echo back remote updates
-      // Always queue the update so it eventually reaches the outbox (even if offline)
-      this.queueUpdate(collectionName, update);
-    });
+  // Always queue the update so it eventually reaches the outbox (even if offline)
+  this.queueUpdate(collectionName, update);
+});
 
     this.docs.set(collectionName, doc);
+
+    // Request initial synchronization from any already connected peers
+    if (this._enabled && this.network.connectedPeerCount > 0) {
+      const stateVector = Y.encodeStateVector(doc);
+      this.network.broadcast({
+        type: "sync-request",
+        payload: this.encodeMessage(collectionName, stateVector),
+      });
+    }
+
     return doc;
   }
 
@@ -273,9 +306,6 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
           });
         })
         .catch(() => {
-          // Failure to upgrade -> disconnect peer
-          // Assuming `network` has a way to disconnect or we just ignore.
-          // We can emit an error or handle it.
           console.warn(
             `Peer ${msg.from} failed to upgrade. Disconnecting is currently not natively supported in NetworkManager's public API directly from SyncEngine, but we will ignore their updates.`
           );
@@ -284,7 +314,20 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
     }
 
     if (msg.type === "sync-upgrade-accept") {
-      // Could log or update peer state
+      return;
+    }
+
+    if (msg.type === "sync-request") {
+      const payload = typeof msg.payload === "string" ? base64ToBytes(msg.payload) : msg.payload;
+      const decoded = this.decodeMessage(payload);
+      if (decoded === null) return;
+
+      const doc = this.getDoc(decoded.collectionName);
+      const diff = Y.encodeStateAsUpdate(doc, decoded.update);
+      this.network.sendTo(msg.from, {
+        type: "sync-update",
+        payload: this.encodeMessage(decoded.collectionName, diff),
+      });
       return;
     }
 
@@ -298,9 +341,19 @@ export class SyncEngine extends EventEmitter<SyncEvents> {
     void this.applyRemoteUpdate(decoded.collectionName, decoded.update, msg.from);
   }
 
-  private onPeerConnected(): void {
+  private onPeerConnected(peer?: { peerId: string }): void {
     this.updateState({ connectedPeers: this.network.connectedPeerCount });
     void this.flushOutbox();
+
+    if (peer?.peerId) {
+      for (const [collectionName, doc] of this.docs.entries()) {
+        const stateVector = Y.encodeStateVector(doc);
+        this.network.sendTo(peer.peerId, {
+          type: "sync-request",
+          payload: this.encodeMessage(collectionName, stateVector),
+        });
+      }
+    }
   }
 
   private onPeerDisconnected(): void {
