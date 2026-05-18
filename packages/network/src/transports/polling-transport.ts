@@ -1,4 +1,5 @@
 import type { SignalingTransport } from "../signaling-transport.js";
+import type { ProofOfWorkSolution } from "../pow.js";
 
 /**
  * HTTP long-polling signaling transport.
@@ -37,13 +38,21 @@ export class PollingTransport implements SignalingTransport {
    * @param roomId - Room to join
    * @param peerId - Local peer identifier
    */
-  async connect(roomId: string, peerId: string): Promise<void> {
+  async connect(
+    roomId: string,
+    peerId: string,
+    proofOfWork?: ProofOfWorkSolution | null
+  ): Promise<void> {
     this.roomId = roomId;
 
     const res = await fetch(`${this.baseUrl}/poll/join`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ room: roomId, peer: peerId }),
+      body: JSON.stringify({
+        room: roomId,
+        peer: peerId,
+        ...(proofOfWork ? { pow: proofOfWork } : {}),
+      }),
     });
 
     if (!res.ok) {

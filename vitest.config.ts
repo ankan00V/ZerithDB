@@ -26,7 +26,7 @@ export default defineConfig({
         statements: 70,
       },
     },
-    include: ["packages/*/src/**/*.test.ts", "tests/**/*.test.ts"],
+    include: ["packages/*/src/**/*.test.ts", "infra/*/src/**/*.test.ts", "tests/**/*.test.ts"],
     exclude: ["node_modules", "dist", ".next"],
   },
 });

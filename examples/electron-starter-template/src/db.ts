@@ -9,8 +9,8 @@ export type Note = {
   title: string;
   body: string;
   tags: string[];
-  updatedAt: number;   // Unix ms — used for display ordering
-  authorKey: string;   // DID public key of the original creator
+  updatedAt: number; // Unix ms — used for display ordering
+  authorKey: string; // DID public key of the original creator
 };
 
 // ---------------------------------------------------------------------------
@@ -25,10 +25,10 @@ export type Note = {
 // connect, all traffic is direct. The relay never sees your data.
 
 export const db = createApp({
-  appId: "my-notes-app-v1",       // namespaces this app's IndexedDB store
+  appId: "my-notes-app-v1", // namespaces this app's IndexedDB store
   sync: {
-    signalingUrl: "wss://signal.zerithdb.dev",  // hosted relay (swap for ws://localhost:4000 in LAN mode)
-    autoReconnect: true,           // retry when connectivity is restored
-    reconnectDelay: 2000,          // ms between retry attempts
+    signalingUrl: "wss://signal.zerithdb.dev", // hosted relay (swap for ws://localhost:4000 in LAN mode)
+    autoReconnect: true, // retry when connectivity is restored
+    reconnectDelay: 2000, // ms between retry attempts
   },
 });

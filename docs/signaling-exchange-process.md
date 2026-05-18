@@ -60,15 +60,27 @@ The WebSocket connection includes:
 
 - `room` → identifies the room being joined
 - `peer` → uniquely identifies the local peer
+- `powChallenge` and `powNonce` → Hashcash proof-of-work solution for the initial join
 
 Example:
 
 ```text
-wss://signal-server-url?room=my-room&peer=peer-id
+wss://signal-server-url?room=my-room&peer=peer-id&powChallenge=...&powNonce=...
 ```
 
 At this stage, the connection is only used for signaling and peer discovery. Application data is not
 sent through the signaling server.
+
+Before opening the WebSocket, the browser SDK fetches a short-lived challenge from:
+
+```text
+GET /pow/challenge?room=my-room&peer=peer-id
+```
+
+The signaling server signs the challenge and chooses the current difficulty based on active peer
+load plus the configured `POW_THREAT_LEVEL`. Verification is intentionally fast: the server checks
+the signature, expiration, replay cache, room/peer binding, and one SHA-256 digest. HTTP polling
+uses the same puzzle in `POST /poll/join` under the `pow` field.
 
 ---
 

@@ -11,9 +11,9 @@ import type { Note } from "../db";
 //   2. A 2-second polling fallback so the list always stays fresh
 
 function useNotes() {
-  const [notes, setNotes]   = useState<Note[]>([]);
+  const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError]   = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const fetch = useCallback(async () => {
     try {
@@ -34,9 +34,11 @@ function useNotes() {
 
     // Re-fetch on ZerithDB sync/change events (alpha — may not fire yet)
     try {
-      db.sync.on("synced",  fetch);
-      db.sync.on("change",  fetch);
-    } catch { /* noop */ }
+      db.sync.on("synced", fetch);
+      db.sync.on("change", fetch);
+    } catch {
+      /* noop */
+    }
 
     // Polling fallback — keeps the list consistent even without events
     const interval = setInterval(fetch, 2000);
@@ -46,7 +48,9 @@ function useNotes() {
       try {
         db.sync.off?.("synced", fetch);
         db.sync.off?.("change", fetch);
-      } catch { /* noop */ }
+      } catch {
+        /* noop */
+      }
     };
   }, [fetch]);
 
@@ -66,7 +70,7 @@ export function NoteList({ onSelect, selectedId }: Props) {
   const { notes, loading, error } = useNotes();
 
   if (loading) return <p className="list-state">Loading…</p>;
-  if (error)   return <p className="list-state error">{error}</p>;
+  if (error) return <p className="list-state error">{error}</p>;
   if (!notes.length) return <p className="list-state muted">No notes yet.</p>;
 
   return (
@@ -78,9 +82,7 @@ export function NoteList({ onSelect, selectedId }: Props) {
           onClick={() => onSelect(note)}
         >
           <span className="note-title">{note.title || "Untitled"}</span>
-          <span className="note-date">
-            {new Date(note.updatedAt).toLocaleDateString()}
-          </span>
+          <span className="note-date">{new Date(note.updatedAt).toLocaleDateString()}</span>
         </li>
       ))}
     </ul>

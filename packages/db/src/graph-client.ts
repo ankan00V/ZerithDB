@@ -1,6 +1,12 @@
 import { type Table } from "dexie";
 import { v7 as uuidv7 } from "uuid";
-import type { GraphNode, GraphEdge, GraphNodeId, EdgeLabel, GraphTraversalResult } from "zerithdb-core";
+import type {
+  GraphNode,
+  GraphEdge,
+  GraphNodeId,
+  EdgeLabel,
+  GraphTraversalResult,
+} from "zerithdb-core";
 import { ZerithDBError, ErrorCode } from "zerithdb-core";
 import { wrapIDBOperation } from "./internal/wrap-idb-operation.js";
 
@@ -160,7 +166,16 @@ export class GraphClient<T extends Record<string, any> = Record<string, any>> {
     weight?: number
   ): Promise<string> {
     const now = Date.now();
-    const edge: GraphEdge = { _id: uuidv7(), from, to, label, weight, data, _createdAt: now, _updatedAt: now };
+    const edge: GraphEdge = {
+      _id: uuidv7(),
+      from,
+      to,
+      label,
+      weight,
+      data,
+      _createdAt: now,
+      _updatedAt: now,
+    };
     return wrapIDBOperation(
       ErrorCode.DB_WRITE_FAILED,
       `Failed to add edge to graph "${this.graphName}"`,

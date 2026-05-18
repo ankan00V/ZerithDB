@@ -7,18 +7,19 @@ export default defineConfig({
   build: {
     outDir: "dist",
   },
-  define: {                        // ← add this block
+  define: {
+    // ← add this block
     global: "globalThis",
     "process.env": {},
     "process.browser": true,
   },
   resolve: {
     alias: {
-      "@zerithdb/db":      "zerithdb-db",
-      "@zerithdb/sync":    "zerithdb-sync",
-      "@zerithdb/auth":    "zerithdb-auth",
+      "@zerithdb/db": "zerithdb-db",
+      "@zerithdb/sync": "zerithdb-sync",
+      "@zerithdb/auth": "zerithdb-auth",
       "@zerithdb/network": "zerithdb-network",
-      "@zerithdb/core":    "zerithdb-core",
+      "@zerithdb/core": "zerithdb-core",
     },
   },
 });

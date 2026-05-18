@@ -8,13 +8,13 @@ export default function AnimatedDiagram() {
       {/* Client 1 */}
       <div className="flex flex-col items-center z-10 w-48">
         <div className="w-24 h-24 bg-white rounded-2xl shadow-xl border border-gray-200 flex items-center justify-center relative mb-4">
-          <Laptop className="w-10 h-10 text-gray-900" />
+          <Laptop className="w-10 h-10 text-foreground" />
           <div className="absolute -bottom-3 -right-3 w-10 h-10 bg-blue-50 border border-blue-200 rounded-full flex items-center justify-center">
             <Database className="w-5 h-5 text-blue-600" />
           </div>
         </div>
-        <p className="font-semibold text-gray-900">Client A</p>
-        <p className="text-xs text-gray-500">IndexedDB</p>
+        <p className="font-semibold text-foreground">Client A</p>
+        <p className="text-xs text-muted-foreground">IndexedDB</p>
       </div>
 
       {/* Network / CRDT Middle */}
@@ -29,7 +29,7 @@ export default function AnimatedDiagram() {
 
         <div className="bg-white p-4 rounded-full shadow-lg border border-gray-200 z-10 flex flex-col items-center justify-center">
           <RefreshCcw className="w-8 h-8 text-blue-600 mb-2 animate-[spin_4s_linear_infinite]" />
-          <span className="text-xs font-bold text-gray-900 px-2 py-1 bg-gray-100 rounded-md">
+          <span className="text-xs font-bold text-foreground px-2 py-1 bg-muted rounded-md">
             CRDT Merge
           </span>
         </div>
@@ -53,13 +53,13 @@ export default function AnimatedDiagram() {
       {/* Client 2 */}
       <div className="flex flex-col items-center z-10 w-48">
         <div className="w-24 h-24 bg-white rounded-2xl shadow-xl border border-gray-200 flex items-center justify-center relative mb-4">
-          <Laptop className="w-10 h-10 text-gray-900" />
+          <Laptop className="w-10 h-10 text-foreground" />
           <div className="absolute -bottom-3 -left-3 w-10 h-10 bg-blue-50 border border-blue-200 rounded-full flex items-center justify-center">
             <Database className="w-5 h-5 text-blue-600" />
           </div>
         </div>
-        <p className="font-semibold text-gray-900">Client B</p>
-        <p className="text-xs text-gray-500">IndexedDB</p>
+        <p className="font-semibold text-foreground">Client B</p>
+        <p className="text-xs text-muted-foreground">IndexedDB</p>
       </div>
     </div>
   );

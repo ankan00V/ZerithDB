@@ -25,7 +25,8 @@
   "dependencies": {
     "dexie": "^4.0.8",
     "uuid": "^10.0.0",
-    "zerithdb-core": "workspace:*"
+    "zerithdb-core": "workspace:*",
+    "zerithdb-utils": "workspace:*"
   },
   "devDependencies": {
     "@types/uuid": "^10.0.0",

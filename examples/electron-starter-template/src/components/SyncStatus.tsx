@@ -76,7 +76,6 @@
 //   );
 // }
 
-
 import { useState, useEffect } from "react";
 import { db } from "../db";
 
@@ -171,10 +170,7 @@ export function SyncStatus() {
   };
 
   return (
-    <div
-      className={`sync-status sync-status--${status}`}
-      title={label[status]}
-    >
+    <div className={`sync-status sync-status--${status}`} title={label[status]}>
       {label[status]}
     </div>
   );

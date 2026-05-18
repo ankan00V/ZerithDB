@@ -13,18 +13,12 @@ export async function purgeCommand(): Promise<void> {
         force: true,
       });
 
-      console.log(
-        chalk.green("✅ Successfully purged all local ZerithDB data.")
-      );
+      console.log(chalk.green("✅ Successfully purged all local ZerithDB data."));
     } else {
-      console.log(
-        chalk.yellow("ℹ️ No local ZerithDB data found to purge.")
-      );
+      console.log(chalk.yellow("ℹ️ No local ZerithDB data found to purge."));
     }
   } catch (error) {
-    console.error(
-      chalk.red("❌ Failed to purge local ZerithDB data.")
-    );
+    console.error(chalk.red("❌ Failed to purge local ZerithDB data."));
 
     console.error(error);
     process.exit(1);

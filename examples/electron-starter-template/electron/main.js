@@ -3,14 +3,14 @@ const path = require("path");
 
 function createWindow() {
   const win = new BrowserWindow({
-  width: 1200,
-  height: 800,
-  webPreferences: {
-    partition: "persist:zerithdb",
-    contextIsolation: true,
-    preload: path.join(__dirname, "preload.js"),
-  },
-});
+    width: 1200,
+    height: 800,
+    webPreferences: {
+      partition: "persist:zerithdb",
+      contextIsolation: true,
+      preload: path.join(__dirname, "preload.js"),
+    },
+  });
   const isDev = !app.isPackaged;
 
   if (isDev) {

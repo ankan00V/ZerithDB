@@ -24,26 +24,33 @@ export interface SyncConfig {
    * @default 10
    */
   maxPeers?: number;
+/**
+ * Delay between sync broadcasts in ms.
+ * Helps batch rapid Yjs updates together.
+ * @default 100
+ */
+updateThrottleMs?: number;
 
-  /**
-   * Signaling transport preference.
-   * - `"auto"`      — Try WebSocket first, fall back to HTTP long-polling (default)
-   * - `"websocket"` — WebSocket only (original behavior)
-   * - `"polling"`   — HTTP long-polling only (for strict firewall environments)
-   * @default "auto"
-   */
-  transport?: "auto" | "websocket" | "polling";
+/**
+ * Signaling transport preference.
+ * - `"auto"`      — Try WebSocket first, fall back to HTTP long-polling (default)
+ * - `"websocket"` — WebSocket only (original behavior)
+ * - `"polling"`   — HTTP long-polling only (for strict firewall environments)
+ * @default "auto"
+ */
+transport?: "auto" | "websocket" | "polling";
 
-  /**
-   * Configuration options for low-latency ephemeral sync state.
-   */
-  ephemeral?: EphemeralConfig;
+/**
+ * Configuration options for low-latency ephemeral sync state.
+ */
+ephemeral?: EphemeralConfig;
 }
 
 export interface EphemeralConfig {
   cleanupIntervalMs?: number;
   throttleMs?: number;
   staleAfterMs?: number;
+
 }
 
 export interface AuthConfig {

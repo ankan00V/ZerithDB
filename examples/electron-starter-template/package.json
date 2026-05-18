@@ -4,13 +4,11 @@
   "version": "0.1.0",
   "description": "Offline-first collaborative notes — ZerithDB + Electron + React",
   "main": "electron/main.js",
-
   "scripts": {
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "build": "vite build && electron-builder",
     "preview": "vite preview"
   },
-
   "build": {
     "appId": "com.ganesh.mynotesapp",
     "files": [
@@ -23,7 +21,6 @@
       "buildResources": "build"
     }
   },
-
   "dependencies": {
     "zerithdb-sdk": "latest",
     "zerithdb-db": "latest",
@@ -35,7 +32,6 @@
     "react-dom": "^18.3.0",
     "uuid": "^9.0.0"
   },
-
   "devDependencies": {
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",

@@ -5,7 +5,7 @@ import type { Note } from "../db";
 import { v4 as uuid } from "uuid";
 
 interface Props {
-  note: Note | null;   // null = new note mode
+  note: Note | null; // null = new note mode
   onSaved: (id: string) => void;
 }
 
@@ -24,13 +24,13 @@ interface Props {
 
 export function NoteEditor({ note, onSaved }: Props) {
   const [title, setTitle] = useState("");
-  const [body,  setBody]  = useState("");
+  const [body, setBody] = useState("");
   const [saving, setSaving] = useState(false);
 
   // Populate fields whenever the selected note changes.
   useEffect(() => {
     setTitle(note?.title ?? "");
-    setBody(note?.body  ?? "");
+    setBody(note?.body ?? "");
   }, [note?.id]);
 
   async function handleSave() {
@@ -41,10 +41,7 @@ export function NoteEditor({ note, onSaved }: Props) {
       if (note) {
         // UPDATE — merges via CRDT; concurrent edits from peers are reconciled
         // by Yjs without any data loss or manual conflict resolution.
-        await db.db("notes").update(
-          { id: note.id },
-          { title, body, updatedAt: now }
-        );
+        await db.db("notes").update({ id: note.id }, { title, body, updatedAt: now });
         onSaved(note.id);
       } else {
         // INSERT — immediately persisted to local IndexedDB,
@@ -89,19 +86,12 @@ export function NoteEditor({ note, onSaved }: Props) {
       />
 
       <div className="editor-actions">
-        <button
-          className="btn-save"
-          onClick={handleSave}
-          disabled={saving}
-        >
+        <button className="btn-save" onClick={handleSave} disabled={saving}>
           {saving ? "Saving…" : "Save"}
         </button>
 
         {note && (
-          <button
-            className="btn-delete"
-            onClick={handleDelete}
-          >
+          <button className="btn-delete" onClick={handleDelete}>
             Delete
           </button>
         )}
